@@ -50,12 +50,16 @@ class JustAudioPlugin extends JustAudioPlatform {
 
 /// The web impluementation of [AudioPlayerPlatform].
 abstract class JustAudioPlayer extends AudioPlayerPlatform {
-  final _eventController = StreamController<PlaybackEventMessage>.broadcast();
-  final _dataEventController = StreamController<PlayerDataMessage>.broadcast();
+  final _eventController =
+      StreamController<PlaybackEventMessage>.broadcast(sync: true);
+  final _dataEventController =
+      StreamController<PlayerDataMessage>.broadcast(sync: true);
   ProcessingStateMessage _processingState = ProcessingStateMessage.idle;
   bool _playing = false;
   int? _index;
   double _speed = 1.0;
+  int? errorCode;
+  String? errorMessage;
 
   /// Creates a platform player with the given [id].
   JustAudioPlayer({required String id}) : super(id);
@@ -88,12 +92,18 @@ abstract class JustAudioPlayer extends AudioPlayerPlatform {
       duration: getDuration(),
       currentIndex: _index,
       androidAudioSessionId: null,
+      errorCode: errorCode,
+      errorMessage: errorMessage,
     ));
   }
 
   /// Transitions to [processingState] and broadcasts a playback event.
   void transition(ProcessingStateMessage processingState) {
     _processingState = processingState;
+    if (processingState != ProcessingStateMessage.idle) {
+      errorCode = null;
+      errorMessage = null;
+    }
     broadcastPlaybackEvent();
   }
 }
@@ -114,50 +124,59 @@ class Html5AudioPlayer extends JustAudioPlayer {
   Html5AudioPlayer({required String id}) : super(id: id) {
     _audioElement.addEventListener(
         'durationchange',
-        (event) {
+        (Event event) {
           _durationCompleter?.complete();
+          _durationCompleter = null;
           broadcastPlaybackEvent();
         }.toJS);
     _audioElement.addEventListener(
         'error',
-        (event) {
+        (Event event) {
+          _eventController.addError(PlatformException(
+            code: '${_audioElement.error!.code}',
+            message: _audioElement.error!.message,
+          ));
+          errorCode = _audioElement.error!.code;
+          errorMessage = _audioElement.error!.message;
+          transition(ProcessingStateMessage.idle);
           _durationCompleter?.completeError(_audioElement.error!);
+          _durationCompleter = null;
         }.toJS);
     _audioElement.addEventListener(
         'ended',
-        (event) async {
-          _currentAudioSourcePlayer?.complete();
+        (Event event) {
+          _currentAudioSourcePlayer?.complete().catchError((e, st) {});
         }.toJS);
     _audioElement.addEventListener(
         'timeupdate',
-        (event) {
+        (Event event) {
           _currentAudioSourcePlayer
               ?.timeUpdated(_audioElement.currentTime.toDouble());
         }.toJS);
     _audioElement.addEventListener(
         'loadstart',
-        (event) {
+        (Event event) {
           transition(ProcessingStateMessage.buffering);
         }.toJS);
     _audioElement.addEventListener(
         'waiting',
-        (event) {
+        (Event event) {
           transition(ProcessingStateMessage.buffering);
         }.toJS);
     _audioElement.addEventListener(
         'stalled',
-        (event) {
+        (Event event) {
           transition(ProcessingStateMessage.buffering);
         }.toJS);
     _audioElement.addEventListener(
         'canplaythrough',
-        (event) {
+        (Event event) {
           _audioElement.playbackRate = _speed;
           transition(ProcessingStateMessage.ready);
         }.toJS);
     _audioElement.addEventListener(
         'progress',
-        (event) {
+        (Event event) {
           broadcastPlaybackEvent();
         }.toJS);
   }
@@ -357,6 +376,13 @@ class Html5AudioPlayer extends JustAudioPlayer {
       WebCrossOriginMessage.useCredentials: 'use-credentials',
     }[request.crossOrigin];
     return SetWebCrossOriginResponse();
+  }
+
+  /// Sets a specific device output id, null for default
+  @override
+  Future<SetWebSinkIdResponse> setWebSinkId(SetWebSinkIdRequest request) async {
+    await _audioElement.setSinkId(request.sinkId).toDart;
+    return SetWebSinkIdResponse();
   }
 
   @override
@@ -669,7 +695,7 @@ abstract class UriAudioSourcePlayer extends IndexedAudioSourcePlayer {
   @override
   Future<void> complete() async {
     _interruptPlay();
-    html5AudioPlayer.onEnded();
+    await html5AudioPlayer.onEnded().catchError((e, st) {});
   }
 
   void _interruptPlay() {
@@ -853,7 +879,7 @@ class ClippingAudioSourcePlayer extends IndexedAudioSourcePlayer {
       _completer = Completer<ClipInterruptReason>();
     }
     if (reason == ClipInterruptReason.end) {
-      html5AudioPlayer.onEnded();
+      await html5AudioPlayer.onEnded().catchError((e, st) {});
     }
     _completer = null;
   }
