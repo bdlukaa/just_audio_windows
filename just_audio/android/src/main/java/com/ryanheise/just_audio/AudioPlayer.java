@@ -96,6 +96,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     private AudioAttributes pendingAudioAttributes;
     private LoadControl loadControl;
     private boolean offloadSchedulingEnabled;
+    private AudioOffloadPreferences audioOffloadPreferences;
     private boolean useLazyPreparation;
     private LivePlaybackSpeedControl livePlaybackSpeedControl;
     private List<Object> rawAudioEffects;
@@ -145,6 +146,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         final String id,
         Map<?, ?> audioLoadConfiguration,
         List<Object> rawAudioEffects,
+        Map<?, ?> audioOffloadPreferences,
         Boolean offloadSchedulingEnabled,
         boolean useLazyPreparation
     ) {
@@ -152,6 +154,40 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         this.rawAudioEffects = rawAudioEffects;
         this.offloadSchedulingEnabled = offloadSchedulingEnabled != null ? offloadSchedulingEnabled : false;
         this.useLazyPreparation = useLazyPreparation;
+
+        if (audioOffloadPreferences != null) {
+            this.audioOffloadPreferences = new AudioOffloadPreferences.Builder()
+                .setIsGaplessSupportRequired((Boolean)audioOffloadPreferences.get("isGaplessSupportRequired"))
+                .setIsSpeedChangeSupportRequired((Boolean)audioOffloadPreferences.get("isSpeedChangeSupportRequired"))
+                .setAudioOffloadMode((Integer)audioOffloadPreferences.get("audioOffloadMode"))
+                .build();
+        } else {
+            // With latest behaviour, offload scheduling by default. When
+            // offloadSchedulingEnabled is false, audio offload will still be
+            // enabled unless it conflicts with gapless or speed change
+            // requirements, where on some devices and Android versions, these
+            // features are not supported during offload. We rely on the
+            // setIsGaplessSupportRequired and setIsSpeedChangeSupportRequired
+            // methods to implement that. However due to a bug in certain
+            // Samsung devices, incorrect values are reported, so as an
+            // exception for Samsung we disable offload in this situation:
+            //
+            //     https://github.com/ryanheise/just_audio/issues/1526
+            //
+            // For more control over these settings, it is recommended to pass
+            // in audioOffloadPreferences instead of offloadSchedulingEnabled.
+            final boolean isSamsung = Build.MANUFACTURER.toLowerCase().contains("samsung")
+                || Build.BRAND.toLowerCase().contains("samsung");
+            final int offloadMode = isSamsung
+                ? AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED
+                : AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED;
+            this.audioOffloadPreferences = new AudioOffloadPreferences.Builder()
+                .setIsGaplessSupportRequired(!offloadSchedulingEnabled)
+                .setIsSpeedChangeSupportRequired(!offloadSchedulingEnabled)
+                .setAudioOffloadMode(offloadMode)
+                .build();
+        }
+
         methodChannel = new MethodChannel(messenger, "com.ryanheise.just_audio.methods." + id);
         methodChannel.setMethodCallHandler(this);
         eventChannel = new BetterEventChannel(messenger, "com.ryanheise.just_audio.events." + id);
@@ -772,27 +808,10 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
                 builder.setLivePlaybackSpeedControl(livePlaybackSpeedControl);
             }
             player = builder.build();
-            // The latest ExoPlayer enables offload scheduling by default but
-            // it doesn't support gapless playback below SDK level 33 or speec
-            // changing. To maintain backwards compatibility within just_audio,
-            // we set gapless playback and speed changing support as required,
-            // and let ExoPlayer choose whether it can enable offload
-            // scheduling depending on device support. If the app passes in
-            // androidOffloadSchedulingEnabled: true, we simply remove these
-            // requirements which may prevent gapless and speed changing from
-            // working, but will allow offload to work. A future release may
-            // expose more parameters to the app concerning offloading
-            // preferences.
             player.setTrackSelectionParameters(
                 player.getTrackSelectionParameters()
                     .buildUpon()
-                    .setAudioOffloadPreferences(
-                        new AudioOffloadPreferences.Builder()
-                            .setIsGaplessSupportRequired(!offloadSchedulingEnabled)
-                            .setIsSpeedChangeSupportRequired(!offloadSchedulingEnabled)
-                            .setAudioOffloadMode(AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED)
-                            .build()
-                    )
+                    .setAudioOffloadPreferences(audioOffloadPreferences)
                     .build()
             );
             setAudioSessionId(player.getAudioSessionId());

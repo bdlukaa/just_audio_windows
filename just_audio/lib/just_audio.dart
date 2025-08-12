@@ -70,6 +70,8 @@ class AudioPlayer {
 
   final bool _androidOffloadSchedulingEnabled;
 
+  final AndroidAudioOffloadPreferences? _androidAudioOffloadPreferences;
+
   /// This is `true` when the audio player needs to engage the native platform
   /// side of the plugin to decode or play audio, and is `false` when the native
   /// resources are not needed (i.e. after initial instantiation and after [stop]).
@@ -238,6 +240,8 @@ class AudioPlayer {
     bool handleAudioSessionActivation = true,
     AudioLoadConfiguration? audioLoadConfiguration,
     AudioPipeline? audioPipeline,
+    AndroidAudioOffloadPreferences? androidAudioOffloadPreferences,
+    @Deprecated('Use androidAudioOffloadPreferences instead')
     bool androidOffloadSchedulingEnabled = false,
     bool useProxyForRequestHeaders = true,
     bool useLazyPreparation = true,
@@ -251,6 +255,7 @@ class AudioPlayer {
         _audioLoadConfiguration = audioLoadConfiguration,
         _audioPipeline = audioPipeline ?? AudioPipeline(),
         _androidOffloadSchedulingEnabled = androidOffloadSchedulingEnabled,
+        _androidAudioOffloadPreferences = androidAudioOffloadPreferences,
         _useProxyForRequestHeaders = useProxyForRequestHeaders,
         // ignore: deprecated_member_use_from_same_package
         _playlist = ConcatenatingAudioSource._playlist(
@@ -1640,6 +1645,8 @@ class AudioPlayer {
                     : [],
                 androidOffloadSchedulingEnabled:
                     _androidOffloadSchedulingEnabled,
+                androidAudioOffloadPreferences:
+                    _androidAudioOffloadPreferences?._toMessage(),
                 useLazyPreparation: _playlist.useLazyPreparation,
               )))
             : (_idlePlatform = _IdleAudioPlayer(
@@ -2357,6 +2364,38 @@ class AndroidLivePlaybackSpeedControl {
             targetLiveOffsetIncrementOnRebuffer,
         minPossibleLiveOffsetSmoothingFactor:
             minPossibleLiveOffsetSmoothingFactor,
+      );
+}
+
+/// Audio offload modes for Android.
+enum AndroidAudioOffloadMode { disabled, enabled }
+
+/// Audio offload preferences for Android.
+class AndroidAudioOffloadPreferences {
+  /// The preferred audio offload mode.
+  final AndroidAudioOffloadMode audioOffloadMode;
+
+  /// Constrains enablement of audio offload to happen only if the device
+  /// can fulfill any gapless transitions that might exist in the playlist
+  /// during offload.
+  final bool isGaplessSupportRequired;
+
+  /// Constrains enablement of audio offload to happen only if the device
+  /// can fulfill any speed change request during offload.
+  final bool isSpeedChangeSupportRequired;
+
+  const AndroidAudioOffloadPreferences({
+    this.audioOffloadMode = AndroidAudioOffloadMode.disabled,
+    this.isGaplessSupportRequired = false,
+    this.isSpeedChangeSupportRequired = false,
+  });
+
+  AndroidAudioOffloadPreferencesMessage _toMessage() =>
+      AndroidAudioOffloadPreferencesMessage(
+        audioOffloadMode:
+            AndroidAudioOffloadModeMessage.values[audioOffloadMode.index],
+        isGaplessSupportRequired: isGaplessSupportRequired,
+        isSpeedChangeSupportRequired: isSpeedChangeSupportRequired,
       );
 }
 

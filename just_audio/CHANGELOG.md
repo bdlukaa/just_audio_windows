@@ -1,3 +1,8 @@
+## 0.10.5
+
+* Add androidAudioOffloadPreferences.
+* Deprecate androidOffloadSchedulingEnabled.
+
 ## 0.10.4
 
 * Fix bug on simultaneous loads.
