@@ -484,8 +484,21 @@ public:
       const std::string* type = std::get_if<std::string>(ValueOrNull(source, "type"));
       if (type->compare("progressive") == 0 || type->compare("dash") == 0 || type->compare("hls") == 0) {
           const auto* uri = std::get_if<std::string>(ValueOrNull(source, "uri"));
+          // Encode literal spaces as %20 so that Windows::Foundation::Uri accepts
+          // paths that contain unencoded spaces (e.g. local file paths).
+          // Already percent-encoded sequences are unaffected because they contain
+          // no literal space characters.
+          std::string encodedUri;
+          encodedUri.reserve(uri->length() * 3);
+          for (char c : *uri) {
+              if (c == ' ') {
+                  encodedUri += "%20";
+              } else {
+                  encodedUri += c;
+              }
+          }
           return MediaSource::CreateFromUri(
-              Uri(TO_WIDESTRING(*uri))
+              Uri(TO_WIDESTRING(encodedUri))
           );
       }
       else {

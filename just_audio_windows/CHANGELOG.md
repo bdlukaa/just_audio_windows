@@ -1,6 +1,7 @@
 ## [next]
 
 * [fix]: Fix URL handling for percent-encoded multi-byte characters (e.g. curly apostrophes) in query strings
+* [fix]: Fix playback of local file paths containing spaces
 
 ## 0.2.2
 
