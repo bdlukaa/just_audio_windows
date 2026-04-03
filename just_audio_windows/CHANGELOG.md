@@ -2,6 +2,7 @@
 
 * [fix]: Fix URL handling for percent-encoded multi-byte characters (e.g. curly apostrophes) in query strings
 * [fix]: Fix playback of local file paths containing spaces
+* [fix]: `seek(null)` no longer crashes on live streams
 
 ## 0.2.2
 

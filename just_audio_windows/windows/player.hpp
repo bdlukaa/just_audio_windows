@@ -373,7 +373,7 @@ public:
 
       const auto* position = ValueOrNull(*args, "position");
 
-      if (position != nullptr) {
+      if (position != nullptr && !position->IsNull()) {
         seekToPosition((*position).LongValue());
       }
       
