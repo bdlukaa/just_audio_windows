@@ -10,14 +10,14 @@
 #include <flutter/method_channel.h>
 #include <flutter/standard_method_codec.h>
 
+#include "uri_utils.hpp"
+
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Media.Audio.h>
 #include <winrt/Windows.Media.Core.h>
 #include <winrt/Windows.Media.Playback.h>
 #include <winrt/Windows.System.h>
-#include "url_code.hpp"
-
 #define TO_MILLISECONDS(timespan) timespan.count() / 10000
 #define TO_MICROSECONDS(timespan) TO_MILLISECONDS(timespan) * 1000
 
@@ -521,10 +521,8 @@ public:
       const std::string* type = std::get_if<std::string>(ValueOrNull(source, "type"));
       if (type->compare("progressive") == 0 || type->compare("dash") == 0 || type->compare("hls") == 0) {
           const auto* uri = std::get_if<std::string>(ValueOrNull(source, "uri"));
-          std::string decodedUri;
-          UrlDecode(*uri, decodedUri); 
           return MediaSource::CreateFromUri(
-              Uri(TO_WIDESTRING(decodedUri)) 
+              Uri(TO_WIDESTRING(EncodeSpacesInUri(*uri)))
           );
       }
       else {
