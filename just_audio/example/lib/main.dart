@@ -2,7 +2,6 @@
 // More advanced examples demonstrating other features can be found in the same
 // directory as this example in the GitHub repository.
 
-import 'media_kit_stub.dart' if (dart.library.io) 'media_kit_impl.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,7 +10,7 @@ import 'package:just_audio_example/common.dart';
 import 'package:rxdart/rxdart.dart';
 
 void main() {
-  initMediaKit(); // Initialise just_audio_media_kit for Linux/Windows.
+  // initMediaKit(); // Initialise just_audio_media_kit for Linux/Windows.
   runApp(const MyApp());
 }
 

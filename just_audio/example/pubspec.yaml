@@ -10,12 +10,6 @@ dependencies:
     sdk: flutter
   audio_session: ^0.2.0
   rxdart: ^0.28.0
-  just_audio_media_kit: ^2.1.0
-  media_kit_libs_linux: any
-  media_kit_libs_windows_audio: any
-  # Other platform implementations below:
-  # just_audio_windows: ^0.2.0
-  # just_audio_libwinmedia: ^0.0.4
   just_audio:
     path: ../
   just_audio_windows:

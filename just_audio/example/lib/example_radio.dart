@@ -4,7 +4,6 @@
 //
 // flutter run -t lib/example_radio.dart
 
-import 'media_kit_stub.dart' if (dart.library.io) 'media_kit_impl.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,7 +11,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_example/common.dart';
 
 void main() {
-  initMediaKit(); // Initialise just_audio_media_kit for Linux/Windows.
+  // initMediaKit(); // Initialise just_audio_media_kit for Linux/Windows.
   runApp(const MyApp());
 }
 

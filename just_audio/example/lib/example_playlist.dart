@@ -7,7 +7,6 @@
 
 import 'dart:async';
 
-import 'media_kit_stub.dart' if (dart.library.io) 'media_kit_impl.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -16,9 +15,6 @@ import 'package:just_audio_example/common.dart';
 import 'package:rxdart/rxdart.dart';
 
 void main() {
-  initMediaKit(); // Initialise just_audio_media_kit for Linux/Windows.
-  // Enable gapless playback on Linux/Windows (experimental):
-  // JustAudioMediaKit.prefetchPlaylist = true;
   runApp(const MyApp());
 }
 
