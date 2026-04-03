@@ -96,6 +96,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     private AudioAttributes pendingAudioAttributes;
     private LoadControl loadControl;
     private boolean offloadSchedulingEnabled;
+    private AudioOffloadPreferences audioOffloadPreferences;
     private boolean useLazyPreparation;
     private LivePlaybackSpeedControl livePlaybackSpeedControl;
     private List<Object> rawAudioEffects;
@@ -145,6 +146,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         final String id,
         Map<?, ?> audioLoadConfiguration,
         List<Object> rawAudioEffects,
+        Map<?, ?> audioOffloadPreferences,
         Boolean offloadSchedulingEnabled,
         boolean useLazyPreparation
     ) {
@@ -152,6 +154,24 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         this.rawAudioEffects = rawAudioEffects;
         this.offloadSchedulingEnabled = offloadSchedulingEnabled != null ? offloadSchedulingEnabled : false;
         this.useLazyPreparation = useLazyPreparation;
+
+        if (audioOffloadPreferences != null) {
+            this.audioOffloadPreferences = new AudioOffloadPreferences.Builder()
+                .setIsGaplessSupportRequired((Boolean)audioOffloadPreferences.get("isGaplessSupportRequired"))
+                .setIsSpeedChangeSupportRequired((Boolean)audioOffloadPreferences.get("isSpeedChangeSupportRequired"))
+                .setAudioOffloadMode((Integer)audioOffloadPreferences.get("audioOffloadMode"))
+                .build();
+        } else {
+            final int offloadMode = offloadSchedulingEnabled
+                ? AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED
+                : AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED;
+            this.audioOffloadPreferences = new AudioOffloadPreferences.Builder()
+                .setIsGaplessSupportRequired(!offloadSchedulingEnabled)
+                .setIsSpeedChangeSupportRequired(!offloadSchedulingEnabled)
+                .setAudioOffloadMode(offloadMode)
+                .build();
+        }
+
         methodChannel = new MethodChannel(messenger, "com.ryanheise.just_audio.methods." + id);
         methodChannel.setMethodCallHandler(this);
         eventChannel = new BetterEventChannel(messenger, "com.ryanheise.just_audio.events." + id);
@@ -254,6 +274,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     }
 
     private boolean updatePositionIfChanged() {
+        if (player == null) return false;
         if (!player.getPlayWhenReady() || processingState != ProcessingState.ready) {
             if (getCurrentPosition() == updatePosition) return false;
         }
@@ -734,7 +755,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         case idle:
             break;
         case loading:
-            abortExistingConnection();
+            abortExistingConnection(false);
             player.stop();
             break;
         default:
@@ -771,27 +792,10 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
                 builder.setLivePlaybackSpeedControl(livePlaybackSpeedControl);
             }
             player = builder.build();
-            // The latest ExoPlayer enables offload scheduling by default but
-            // it doesn't support gapless playback below SDK level 33 or speec
-            // changing. To maintain backwards compatibility within just_audio,
-            // we set gapless playback and speed changing support as required,
-            // and let ExoPlayer choose whether it can enable offload
-            // scheduling depending on device support. If the app passes in
-            // androidOffloadSchedulingEnabled: true, we simply remove these
-            // requirements which may prevent gapless and speed changing from
-            // working, but will allow offload to work. A future release may
-            // expose more parameters to the app concerning offloading
-            // preferences.
             player.setTrackSelectionParameters(
                 player.getTrackSelectionParameters()
                     .buildUpon()
-                    .setAudioOffloadPreferences(
-                        new AudioOffloadPreferences.Builder()
-                            .setIsGaplessSupportRequired(!offloadSchedulingEnabled)
-                            .setIsSpeedChangeSupportRequired(!offloadSchedulingEnabled)
-                            .setAudioOffloadMode(AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED)
-                            .build()
-                    )
+                    .setAudioOffloadPreferences(audioOffloadPreferences)
                     .build()
             );
             setAudioSessionId(player.getAudioSessionId());
@@ -936,15 +940,17 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         }
     }
 
-    private void sendError(int errorCode, String errorMsg) {
-        sendError(errorCode, errorMsg, null);
+    private void sendError(int errorCode, String errorMsg, Object details) {
+        sendError(errorCode, errorMsg, details, true);
     }
 
-    private void sendError(int errorCode, String errorMsg, Object details) {
+    private void sendError(int errorCode, String errorMsg, Object details, boolean switchToIdle) {
         eventChannel.error(String.valueOf(errorCode), errorMsg, details);
         this.errorCode = errorCode;
         this.errorMessage = errorMsg;
-        processingState = ProcessingState.idle;
+        if (switchToIdle) {
+            processingState = ProcessingState.idle;
+        }
         broadcastImmediatePlaybackEvent();
         if (prepareResult != null) {
             prepareResult.error(String.valueOf(errorCode), errorMsg, details);
@@ -983,6 +989,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         if (!player.getPlayWhenReady()) return;
         player.setPlayWhenReady(false);
         updatePosition();
+        enqueuePlaybackEvent();
         if (playResult != null) {
             playResult.success(new HashMap<String, Object>());
             playResult = null;
@@ -1041,7 +1048,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
     public void dispose() {
         if (processingState == ProcessingState.loading) {
-            abortExistingConnection();
+            abortExistingConnection(true);
         }
         if (playResult != null) {
             playResult.success(new HashMap<String, Object>());
@@ -1071,8 +1078,8 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         }
     }
 
-    private void abortExistingConnection() {
-        sendError(ERROR_ABORT, "Connection aborted");
+    private void abortExistingConnection(boolean switchToIdle) {
+        sendError(ERROR_ABORT, "Connection aborted", null, switchToIdle);
     }
 
     // Dart can't distinguish between int sizes so

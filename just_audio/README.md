@@ -25,7 +25,7 @@ await player.stop();                            // Stop and free resources
 
 ### Migrating to 0.10.x
 
-* iOS: You may remove the compile flag `AUDIO_SESSION_MICROPHONE=0` since this is now the default.
+* iOS: As of audio_session 0.2.x, you may remove the compile flag `AUDIO_SESSION_MICROPHONE=0` as this is now the default.
 * Instead of `player.setAudioSource(ConcatenatingAudioSource(children: sources))` use `player.setAudioSources(sources)`.
 * Instead of `LoopingAudioSource(child: source, count: N)` use `...List.filled(N, source)`.
 * Instead of listening to `player.playbackEventStream.onError`, listen to `player.errorStream`.
@@ -276,6 +276,8 @@ dependencies {
     implementation "com.google.android.exoplayer:exoplayer-smoothstreaming:$exoplayer_version"
 }
 ```
+
+Note: the Android Gradle Plugin (AGP) versions 8.6 and 8.7 contain a bug that affects ExoPlayer in release mode. To avoid this, either downgrade or upgrade your AGP version.
 
 ### iOS
 

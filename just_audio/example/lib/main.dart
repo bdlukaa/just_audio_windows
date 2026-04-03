@@ -188,9 +188,7 @@ class ControlButtons extends StatelessWidget {
         IconButton(
           icon: const Icon(Icons.stop),
           iconSize: 64.0,
-          onPressed: () {
-            player.stop();
-          },
+          onPressed: player.stop,
         ),
         // Opens speed slider dialog
         StreamBuilder<double>(
