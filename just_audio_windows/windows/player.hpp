@@ -118,7 +118,21 @@ private:
 
 class AudioPlayer {
 private:
-  /* data */
+  bool disposed_ = false;
+
+  void Dispose() {
+    if (disposed_) return;
+    disposed_ = true;
+    auto session = mediaPlayer.PlaybackSession();
+    session.PlaybackStateChanged(playback_state_token_);
+    mediaPlayer.MediaFailed(media_failed_token_);
+    mediaPlaybackList.CurrentItemChanged(item_changed_token_);
+    mediaPlaybackList.ItemFailed(item_failed_token_);
+    player_channel_->SetMethodCallHandler(nullptr);
+    event_sink_.reset();
+    data_sink_.reset();
+    mediaPlayer.Close();
+  }
 public:
   std::string id;
   Playback::MediaPlayer mediaPlayer{};
@@ -128,6 +142,13 @@ public:
   std::unique_ptr<JustAudioEventSink> event_sink_ = nullptr;
   std::unique_ptr<JustAudioEventSink> data_sink_ = nullptr;
 
+  // Tokens for event unsubscription
+  winrt::event_token playback_state_token_{};
+  winrt::event_token media_failed_token_{};
+  winrt::event_token item_changed_token_{};
+  winrt::event_token item_failed_token_{};
+
+public:
   AudioPlayer::AudioPlayer(std::string idx, flutter::BinaryMessenger* messenger) {
     id = idx;
 
@@ -148,12 +169,14 @@ public:
 
     /// Set up event callbacks
     // Playback event
-    mediaPlayer.PlaybackSession().PlaybackStateChanged([=](auto, const auto& args) -> void {
+    playback_state_token_ = mediaPlayer.PlaybackSession().PlaybackStateChanged([this](auto, const auto& args) -> void {
+      if (disposed_) return;
       broadcastState();
     });
 
     // Player error event
-    mediaPlayer.MediaFailed([=](auto, const Playback::MediaPlayerFailedEventArgs& args) -> void {
+    media_failed_token_ = mediaPlayer.MediaFailed([this](auto, const Playback::MediaPlayerFailedEventArgs& args) -> void {
+      if (disposed_) return;
       std::string errorMessage = winrt::to_string(args.ErrorMessage());
 
       std::cerr << "[just_audio_windows] Media error: " << errorMessage << std::endl;
@@ -181,10 +204,12 @@ public:
     });
 
     mediaPlaybackList.MaxPlayedItemsToKeepOpen(2);
-    mediaPlaybackList.CurrentItemChanged([=](auto, const auto& args) -> void {
+    item_changed_token_ = mediaPlaybackList.CurrentItemChanged([this](auto, const auto& args) -> void {
+      if (disposed_) return;
       broadcastState();
     });
-    mediaPlaybackList.ItemFailed([=](auto, const Playback::MediaPlaybackItemFailedEventArgs& args) -> void {
+    item_failed_token_ = mediaPlaybackList.ItemFailed([this](auto, const Playback::MediaPlaybackItemFailedEventArgs& args) -> void {
+      if (disposed_) return;
       auto error = winrt::hresult_error(args.Error().ExtendedError());
 
       auto message = winrt::to_string(error.message());
@@ -214,9 +239,9 @@ public:
       event_sink_->Error(code, message);
     });
   }
+
   AudioPlayer::~AudioPlayer() {
-    player_channel_->SetMethodCallHandler(nullptr);
-    mediaPlayer.Close();
+    Dispose();
   }
 
   bool HasPlayerId(std::string playerId) {
@@ -252,10 +277,14 @@ public:
 
       result->Success(flutter::EncodableMap());
     } else if (method_call.method_name().compare("play") == 0) {
-      mediaPlayer.Play();
+      if (!disposed_) {
+        mediaPlayer.Play();
+      }
       result->Success(flutter::EncodableMap());
     } else if (method_call.method_name().compare("pause") == 0) {
-      mediaPlayer.Pause();
+      if (!disposed_) {
+        mediaPlayer.Pause();
+      }
       result->Success(flutter::EncodableMap());
     } else if (method_call.method_name().compare("setVolume") == 0) {
       const auto* volume = std::get_if<double>(ValueOrNull(*args, "volume"));
@@ -263,7 +292,9 @@ public:
         return result->Error("volume_error", "volume argument missing");
       }
       float volumeFloat = (float)*volume;
-      mediaPlayer.Volume(volumeFloat);
+      if (!disposed_) {
+        mediaPlayer.Volume(volumeFloat);
+      }
       result->Success(flutter::EncodableMap());
     } else if (method_call.method_name().compare("setSpeed") == 0) {
       const auto* speed = std::get_if<double>(ValueOrNull(*args, "speed"));
@@ -271,7 +302,9 @@ public:
         return result->Error("speed_error", "speed argument missing");
       }
       float speedFloat = (float)*speed;
-      mediaPlayer.PlaybackRate(speedFloat);
+      if (!disposed_) {
+        mediaPlayer.PlaybackRate(speedFloat);
+      }
       result->Success(flutter::EncodableMap());
     } else if (method_call.method_name().compare("setPitch") == 0) {
       result->Success(flutter::EncodableMap());
@@ -283,23 +316,24 @@ public:
         return result->Error("loopMode_error", "loopMode argument missing");
       }
 
-      switch (*loopModePtr) {
-      case 0: // off
-        mediaPlayer.IsLoopingEnabled(false);
-        mediaPlaybackList.AutoRepeatEnabled(false);
-        break;
-      case 1: // one
-        mediaPlayer.IsLoopingEnabled(true);
-        mediaPlaybackList.AutoRepeatEnabled(false);
-        break;
-      case 2: // all
-        mediaPlayer.IsLoopingEnabled(false);
-        mediaPlaybackList.AutoRepeatEnabled(true);
-        break;
-      default:
-        return result->Error("loopMode_error", "loopMode is invalid");
-      }
-
+      if (!disposed_) {
+        switch (*loopModePtr) {
+        case 0: // off
+          mediaPlayer.IsLoopingEnabled(false);
+          mediaPlaybackList.AutoRepeatEnabled(false);
+          break;
+        case 1: // one
+          mediaPlayer.IsLoopingEnabled(true);
+          mediaPlaybackList.AutoRepeatEnabled(false);
+          break;
+        case 2: // all
+          mediaPlayer.IsLoopingEnabled(false);
+          mediaPlaybackList.AutoRepeatEnabled(true);
+          break;
+        default:
+          return result->Error("loopMode_error", "loopMode is invalid");
+        }
+      }  
       result->Success(flutter::EncodableMap());
     } else if (method_call.method_name().compare("setShuffleMode") == 0) {
       const auto* shuffleModePtr = std::get_if<int32_t>(ValueOrNull(*args, "shuffleMode"));
@@ -413,7 +447,7 @@ public:
     } else if (method_call.method_name().compare("androidEqualizerBandSetGain") == 0) {
       result->Success(flutter::EncodableMap());
     } else if (method_call.method_name().compare("dispose") == 0) {
-      mediaPlayer.Close();
+      Dispose();
       result->Success(flutter::EncodableMap());
     } else {
       result->NotImplemented();
@@ -421,6 +455,7 @@ public:
   }
 
   void AudioPlayer::loadSource(const flutter::EncodableMap& source) const& {
+    if(disposed_) return;
     auto items = mediaPlaybackList.Items();
     items.Clear(); // Always clear the list since we are resetting
 
@@ -511,6 +546,7 @@ public:
   }
 
   void AudioPlayer::broadcastPlaybackEvent() {
+    if(disposed_) return;
     auto session = mediaPlayer.PlaybackSession();
 
     auto eventData = flutter::EncodableMap();
@@ -551,6 +587,7 @@ public:
   }
 
   int AudioPlayer::processingState(Playback::MediaPlaybackState state) {
+    if(disposed_) return 0;
     auto session = mediaPlayer.PlaybackSession();
 
     if (state == Playback::MediaPlaybackState::None) {
@@ -566,6 +603,7 @@ public:
   }
 
   void AudioPlayer::broadcastDataEvent() {
+    if(disposed_) return;
     auto session = mediaPlayer.PlaybackSession();
     auto eventData = flutter::EncodableMap();
 
@@ -628,6 +666,7 @@ public:
   }
 
   void AudioPlayer::seekToPosition(int64_t microseconds) {
+    if(disposed_) return;
     mediaPlayer.Position(TimeSpan(std::chrono::microseconds(microseconds)));
 
     broadcastState();

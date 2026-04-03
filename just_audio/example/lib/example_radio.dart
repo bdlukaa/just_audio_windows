@@ -10,7 +10,10 @@ import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_example/common.dart';
 
-void main() => runApp(const MyApp());
+void main() {
+  // initMediaKit(); // Initialise just_audio_media_kit for Linux/Windows.
+  runApp(const MyApp());
+}
 
 class MyApp extends StatefulWidget {
   const MyApp({Key? key}) : super(key: key);
@@ -38,8 +41,7 @@ class MyAppState extends State<MyApp> with WidgetsBindingObserver {
     final session = await AudioSession.instance;
     await session.configure(const AudioSessionConfiguration.speech());
     // Listen to errors during playback.
-    _player.playbackEventStream.listen((event) {},
-        onError: (Object e, StackTrace stackTrace) {
+    _player.errorStream.listen((e) {
       print('A stream error occurred: $e');
     });
     // Try to load audio from a source and catch any errors.
