@@ -2,6 +2,7 @@
 
 * [fix]: Fix URL handling for percent-encoded multi-byte characters (e.g. curly apostrophes) in query strings
 * [fix]: Fix playback of local file paths containing spaces
+* [fix]: Fix buffering error and crash when skipping to previous or next track in a playlist
 
 ## 0.2.2
 

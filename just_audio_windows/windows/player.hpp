@@ -551,25 +551,35 @@ public:
 
     auto eventData = flutter::EncodableMap();
 
-    auto duration = TO_MICROSECONDS(session.NaturalDuration());
+    // NaturalDuration can throw when the session is transitioning between items.
+    int64_t duration = 0;
+    try {
+      duration = TO_MICROSECONDS(session.NaturalDuration());
+    } catch (...) {
+      std::cerr << "[just_audio_windows]: Broadcast playback event error: Error accessing NaturalDuration. Using default value of 0." << std::endl;
+    }
 
     auto now = std::chrono::system_clock::now();
 
     // Try to get the buffering progress or use 1 if an error occurs
-    double bufferingProgress;
-    try
-    {
+    double bufferingProgress = 1;
+    try {
       bufferingProgress = session.BufferingProgress();
-    }
-    catch (...)
-    {
+    } catch (...) {
       // If an error occurs, log it and use 1 as the buffering progress
       std::cerr << "[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1." << std::endl;
-      bufferingProgress = 1;
+    }
+
+    // Position can throw when the session is transitioning between items.
+    int64_t position = 0;
+    try {
+      position = TO_MICROSECONDS(session.Position());
+    } catch (...) {
+      std::cerr << "[just_audio_windows]: Broadcast playback event error: Error accessing Position. Using default value of 0." << std::endl;
     }
 
     eventData[flutter::EncodableValue("processingState")] = flutter::EncodableValue(processingState(session.PlaybackState()));
-    eventData[flutter::EncodableValue("updatePosition")] = flutter::EncodableValue(TO_MICROSECONDS(session.Position())); //int
+    eventData[flutter::EncodableValue("updatePosition")] = flutter::EncodableValue(position); //int
     eventData[flutter::EncodableValue("updateTime")] = flutter::EncodableValue(TO_MILLISECONDS(now.time_since_epoch())); //int
     eventData[flutter::EncodableValue("bufferedPosition")] = flutter::EncodableValue((int64_t)(duration * bufferingProgress)); //int
     eventData[flutter::EncodableValue("duration")] = flutter::EncodableValue(duration); //int
@@ -662,7 +672,11 @@ public:
       std::cerr << "[just_audio_windows] Failed to seek to item: " << winrt::to_string(ex.message()) << std::endl;
     }
 
-    broadcastState();
+    // Do not call broadcastState() here: MoveTo() is asynchronous and the
+    // session is in a transitional state immediately after the call.
+    // The CurrentItemChanged event handler will call broadcastState() once
+    // the item has actually changed, avoiding spurious errors on properties
+    // like BufferingProgress that are unavailable during the transition.
   }
 
   void AudioPlayer::seekToPosition(int64_t microseconds) {
