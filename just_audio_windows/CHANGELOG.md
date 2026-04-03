@@ -1,3 +1,7 @@
+## [next]
+
+* [fix]: Fix URL handling for percent-encoded multi-byte characters (e.g. curly apostrophes) in query strings
+
 ## 0.2.2
 
 * [fix]: Seeking in long tracks (above 36m) ([#36](https://github.com/bdlukaa/just_audio_windows/pull/36))
