@@ -1,8 +1,8 @@
-## [next]
+## 0.2.3
 
-* [fix]: Fix URL handling for percent-encoded multi-byte characters (e.g. curly apostrophes) in query strings
-* [fix]: Fix playback of local file paths containing spaces
-* [fix]: `seek(null)` no longer crashes on live streams
+* [fix]: Invalid access to media player ([#49](https://github.com/bdlukaa/just_audio_windows/pull/49))
+* [fix]: Fix playback of local file paths containing spaces ([#55](https://github.com/bdlukaa/just_audio_windows/pull/55))
+* [fix]: `seek(null)` no longer crashes on live streams ([#56](https://github.com/bdlukaa/just_audio_windows/pull/56))
 
 ## 0.2.2
 
