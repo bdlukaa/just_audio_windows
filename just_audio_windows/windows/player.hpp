@@ -1,6 +1,7 @@
 #pragma comment(lib, "windowsapp")
 
 #include <chrono>
+#include <stdexcept>
 
 // This must be included before many other Windows headers.
 #include <windows.h>
@@ -261,18 +262,30 @@ public:
       const auto* initialPosition = std::get_if<int>(ValueOrNull(*args, "initialPosition"));
       const auto* initialIndex = std::get_if<int>(ValueOrNull(*args, "initialIndex"));
 
+      // `catch (char* error)` caught nothing: no code here throws a raw string,
+      // while createMediaSource throws std::invalid_argument for a source type
+      // it does not support, and every WinRT call in this path can throw
+      // winrt::hresult_error. An uncaught C++ exception escaping a method-call
+      // handler calls std::terminate, so what should have been a catchable Dart
+      // error killed the process instead. The seeks moved inside the try for the
+      // same reason: they sat outside it, so a WinRT throw from either one had
+      // nothing to catch it either.
       try {
         loadSource(*audioSourceData);
-      } catch (char* error) {
-        return result->Error("load_error", error);
-      }
 
-      if (initialIndex != nullptr) {
-        seekToItem((uint32_t)*initialIndex);
-      }
+        if (initialIndex != nullptr) {
+          seekToItem((uint32_t)*initialIndex);
+        }
 
-      if (initialPosition != nullptr) {
-        seekToPosition(*initialPosition);
+        if (initialPosition != nullptr) {
+          seekToPosition(*initialPosition);
+        }
+      } catch (const winrt::hresult_error& error) {
+        return result->Error("load_error", winrt::to_string(error.message()));
+      } catch (const std::exception& error) {
+        return result->Error("load_error", error.what());
+      } catch (...) {
+        return result->Error("load_error", "Unknown error loading the audio source");
       }
 
       result->Success(flutter::EncodableMap());
