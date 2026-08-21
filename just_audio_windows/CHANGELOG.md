@@ -2,6 +2,7 @@
 
 * [fix]: Do not report `completed` before the duration is known ([#66](https://github.com/bdlukaa/just_audio_windows/pull/66))
 * [chore]: Only trace every method call in debug builds, and warn once about BufferingProgress ([#64](https://github.com/bdlukaa/just_audio_windows/pull/64))
+* [fix]: Send channel messages on the platform thread, not on WinRT callback threads ([#63](https://github.com/bdlukaa/just_audio_windows/pull/63))
 * [fix]: `load` returns a Dart error instead of terminating the process on an unsupported source ([#62](https://github.com/bdlukaa/just_audio_windows/pull/62))
 * [fix]: Do not implicitly claim the System Media Transport Controls ([#61](https://github.com/bdlukaa/just_audio_windows/pull/61))
 

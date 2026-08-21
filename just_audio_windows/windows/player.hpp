@@ -1,6 +1,8 @@
 #pragma comment(lib, "windowsapp")
 
+#include <atomic>
 #include <chrono>
+#include <memory>
 #include <stdexcept>
 
 // This must be included before many other Windows headers.
@@ -11,6 +13,7 @@
 #include <flutter/method_channel.h>
 #include <flutter/standard_method_codec.h>
 
+#include "platform_thread.hpp"
 #include "uri_utils.hpp"
 
 #include <winrt/Windows.Foundation.Collections.h>
@@ -129,7 +132,8 @@ private:
 
 class AudioPlayer {
 private:
-  bool disposed_ = false;
+  // Read from WinRT callback threads, written from the platform thread.
+  std::atomic<bool> disposed_{false};
 
   void Dispose() {
     if (disposed_) return;
@@ -155,6 +159,33 @@ public:
 
   bool buffering_progress_warned_ = false;
 
+  // Drains on the platform thread, and outlives every player (see the plugin's
+  // destructor), so holding it raw here would still be safe — the shared_ptr
+  // just makes that guarantee local.
+  std::shared_ptr<PlatformThreadDispatcher> dispatcher_;
+
+  // Liveness token for work posted to the platform thread. A posted task takes
+  // a weak_ptr and drops itself if this player was destroyed in the meantime.
+  // Checking it is enough because both the drain and this player's destruction
+  // happen on the platform thread, so the player cannot go away between the
+  // check and the call.
+  std::shared_ptr<int> life_ = std::make_shared<int>(0);
+
+  // Runs [task] on the platform thread, or inline if there is nothing to
+  // marshal onto — which is what this plugin did everywhere before.
+  void OnPlatformThread(std::function<void()> task) {
+    if (!dispatcher_ || !dispatcher_->available() ||
+        dispatcher_->on_platform_thread()) {
+      task();
+      return;
+    }
+    std::weak_ptr<int> life = life_;
+    dispatcher_->Post([life, task = std::move(task)]() {
+      if (life.expired()) return;
+      task();
+    });
+  }
+
   // Tokens for event unsubscription
   winrt::event_token playback_state_token_{};
   winrt::event_token media_failed_token_{};
@@ -162,8 +193,10 @@ public:
   winrt::event_token item_failed_token_{};
 
 public:
-  AudioPlayer::AudioPlayer(std::string idx, flutter::BinaryMessenger* messenger) {
+  AudioPlayer::AudioPlayer(std::string idx, flutter::BinaryMessenger* messenger,
+                           std::shared_ptr<PlatformThreadDispatcher> dispatcher) {
     id = idx;
+    dispatcher_ = std::move(dispatcher);
 
     // Opt out of the System Media Transport Controls.
     //
@@ -229,7 +262,10 @@ public:
         break;
       }
 
-      event_sink_->Error(code, errorMessage);
+      OnPlatformThread([this, code, errorMessage] {
+        if (disposed_) return;
+        event_sink_->Error(code, errorMessage);
+      });
     });
 
     mediaPlaybackList.MaxPlayedItemsToKeepOpen(2);
@@ -265,7 +301,10 @@ public:
         break;
       }
 
-      event_sink_->Error(code, message);
+      OnPlatformThread([this, code, message] {
+        if (disposed_) return;
+        event_sink_->Error(code, message);
+      });
     });
   }
 
@@ -629,7 +668,17 @@ public:
       eventData[flutter::EncodableValue("currentIndex")] = flutter::EncodableValue(0); //int
     }
 
-    event_sink_->Success(eventData);
+    // Only the channel write is deferred. The payload above is deliberately
+    // built on whatever thread the event arrived on: processingState and the
+    // position/duration fields read live session state, so building it on the
+    // platform thread instead would report whatever WinRT happens to say by the
+    // time it gets there. Mid-load that is MediaPlaybackState::None, which maps
+    // to `idle`, and just_audio treats an idle event as the platform having gone
+    // away and tears the player down under an in-flight load.
+    OnPlatformThread([this, eventData = std::move(eventData)] {
+      if (disposed_) return;
+      event_sink_->Success(eventData);
+    });
   }
 
   int AudioPlayer::processingState(Playback::MediaPlaybackState state) {
@@ -662,7 +711,11 @@ public:
     eventData[flutter::EncodableValue("loopMode")] = flutter::EncodableValue(getLoopMode());
     eventData[flutter::EncodableValue("shuffleMode")] = flutter::EncodableValue(getShuffleMode());
 
-    data_sink_->Success(eventData);
+    // As above: payload here, write on the platform thread.
+    OnPlatformThread([this, eventData = std::move(eventData)] {
+      if (disposed_) return;
+      data_sink_->Success(eventData);
+    });
   }
 
   int AudioPlayer::getLoopMode() {
