@@ -131,6 +131,18 @@ class AudioPlayer {
 private:
   bool disposed_ = false;
 
+  // Whether `load` has ever been handled for this player.
+  //
+  // WinRT reports MediaPlaybackState::None while a source is being swapped in,
+  // not only when nothing is loaded: loadSource starts by clearing the playback
+  // list, which fires CurrentItemChanged with no media attached. Reporting that
+  // as `idle` tells just_audio the platform has gone away — it responds with
+  // _setPlatformActive(false), which aborts the load that is still in flight
+  // with PlayerInterruptedException('Loading interrupted') and leaves the app
+  // with no audio and no obvious reason why. Before any source has been set,
+  // None really does mean idle.
+  bool source_set_ = false;
+
   void Dispose() {
     if (disposed_) return;
     disposed_ = true;
@@ -289,6 +301,10 @@ public:
       const auto* audioSourceData = std::get_if<flutter::EncodableMap>(ValueOrNull(*args, "audioSource"));
       const auto* initialPosition = std::get_if<int>(ValueOrNull(*args, "initialPosition"));
       const auto* initialIndex = std::get_if<int>(ValueOrNull(*args, "initialIndex"));
+
+      // Before loadSource, not after: clearing the playback list inside it
+      // already broadcasts a state event.
+      source_set_ = true;
 
       // `catch (char* error)` caught nothing: no code here throws a raw string,
       // while createMediaSource throws std::invalid_argument for a source type
@@ -637,7 +653,9 @@ public:
     auto session = mediaPlayer.PlaybackSession();
 
     if (state == Playback::MediaPlaybackState::None) {
-      return 0; //idle
+      // See source_set_: once a source has been set, None is a gap between
+      // sources rather than an idle player.
+      return source_set_ ? 1 /*loading*/ : 0 /*idle*/;
     } else if (state == Playback::MediaPlaybackState::Opening) {
       return 1; //loading
     } else if (state == Playback::MediaPlaybackState::Buffering) {

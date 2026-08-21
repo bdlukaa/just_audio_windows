@@ -1,6 +1,7 @@
 ## Unreleased
 
 * [fix]: Do not report `completed` before the duration is known ([#66](https://github.com/bdlukaa/just_audio_windows/pull/66))
+* [fix]: Do not report a source swap as `idle`, which aborted the load in progress ([#65](https://github.com/bdlukaa/just_audio_windows/pull/65))
 * [chore]: Only trace every method call in debug builds, and warn once about BufferingProgress ([#64](https://github.com/bdlukaa/just_audio_windows/pull/64))
 * [fix]: `load` returns a Dart error instead of terminating the process on an unsupported source ([#62](https://github.com/bdlukaa/just_audio_windows/pull/62))
 * [fix]: Do not implicitly claim the System Media Transport Controls ([#61](https://github.com/bdlukaa/just_audio_windows/pull/61))
