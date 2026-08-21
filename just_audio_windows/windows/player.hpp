@@ -152,6 +152,22 @@ public:
   AudioPlayer::AudioPlayer(std::string idx, flutter::BinaryMessenger* messenger) {
     id = idx;
 
+    // Opt out of the System Media Transport Controls.
+    //
+    // MediaPlayer.CommandManager.IsEnabled defaults to true, so Windows
+    // auto-integrates every player with the SMTC: the OS shows a media flyout
+    // and routes hardware media keys straight to mediaPlayer. That is wrong for
+    // a platform implementation on two counts. The flyout is blank, because
+    // nothing here ever publishes a title, artist or artwork. And a media key
+    // moves the native player without telling the Dart side, so just_audio's
+    // `playing` — which it updates from our data events — flips underneath the
+    // app while the app's own transport state does not, leaving position math
+    // and any UI built on it out of sync.
+    //
+    // Callers that want OS controls should publish them deliberately, which on
+    // Flutter means audio_service. Leaving this on takes that choice away.
+    mediaPlayer.CommandManager().IsEnabled(false);
+
     // Set up channels
     player_channel_ =
       std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(

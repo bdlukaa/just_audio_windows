@@ -1,3 +1,6 @@
+## Unreleased
+
+* [fix]: Do not implicitly claim the System Media Transport Controls ([#61](https://github.com/bdlukaa/just_audio_windows/pull/61))
 ## 0.2.3
 
 * [fix]: Invalid access to media player ([#49](https://github.com/bdlukaa/just_audio_windows/pull/49))
