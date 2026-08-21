@@ -1,3 +1,6 @@
+## Unreleased
+
+* [chore]: Only trace every method call in debug builds, and warn once about BufferingProgress ([#64](https://github.com/bdlukaa/just_audio_windows/pull/64))
 ## 0.2.3
 
 * [fix]: Invalid access to media player ([#49](https://github.com/bdlukaa/just_audio_windows/pull/49))

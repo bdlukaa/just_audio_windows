@@ -18,6 +18,16 @@
 #include <winrt/Windows.Media.Core.h>
 #include <winrt/Windows.Media.Playback.h>
 #include <winrt/Windows.System.h>
+// One line per method call is useful when working on the plugin and pure noise
+// in a shipped app — every setVolume, setSpeed, setPitch, setSkipSilence,
+// setLoopMode and setShuffleMode shows up in the user's log. Keep it for debug
+// builds, where NDEBUG is not defined. Real errors are logged either way.
+#ifndef NDEBUG
+#define JAW_TRACE(expr) do { std::cerr << expr << std::endl; } while (0)
+#else
+#define JAW_TRACE(expr) do { } while (0)
+#endif
+
 #define TO_MILLISECONDS(timespan) timespan.count() / 10000
 #define TO_MICROSECONDS(timespan) TO_MILLISECONDS(timespan) * 1000
 
@@ -142,6 +152,8 @@ public:
   std::unique_ptr<JustAudioEventSink> event_sink_ = nullptr;
   std::unique_ptr<JustAudioEventSink> data_sink_ = nullptr;
 
+  bool buffering_progress_warned_ = false;
+
   // Tokens for event unsubscription
   winrt::event_token playback_state_token_{};
   winrt::event_token media_failed_token_{};
@@ -254,7 +266,7 @@ public:
   ) {
     const auto* args = std::get_if<flutter::EncodableMap>(method_call.arguments());
 
-    std::cerr << "[just_audio_windows] Called " << method_call.method_name() << std::endl;
+    JAW_TRACE("[just_audio_windows] Called " << method_call.method_name());
 
     if (method_call.method_name().compare("load") == 0) {
       const auto* audioSourceData = std::get_if<flutter::EncodableMap>(ValueOrNull(*args, "audioSource"));
@@ -563,8 +575,13 @@ public:
     }
     catch (...)
     {
-      // If an error occurs, log it and use 1 as the buffering progress
-      std::cerr << "[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1." << std::endl;
+      // If an error occurs, log it and use 1 as the buffering progress. Once
+      // per player: a source that does not support the property does not start
+      // supporting it, so this otherwise repeated on every playback event.
+      if (!buffering_progress_warned_) {
+        buffering_progress_warned_ = true;
+        std::cerr << "[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1." << std::endl;
+      }
       bufferingProgress = 1;
     }
 
