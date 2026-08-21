@@ -1,3 +1,6 @@
+## Unreleased
+
+* [fix]: Do not report `completed` before the duration is known ([#66](https://github.com/bdlukaa/just_audio_windows/pull/66))
 ## 0.2.3
 
 * [fix]: Invalid access to media player ([#49](https://github.com/bdlukaa/just_audio_windows/pull/49))

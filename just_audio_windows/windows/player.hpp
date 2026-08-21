@@ -596,7 +596,8 @@ public:
       return 1; //loading
     } else if (state == Playback::MediaPlaybackState::Buffering) {
       return 2;//buffering
-    } else if (session.Position().count() == session.NaturalDuration().count()) {
+    } else if (session.NaturalDuration().count() > 0 &&
+               session.Position().count() == session.NaturalDuration().count()) {
       return 4; //completed
     }
     return 3; //ready
