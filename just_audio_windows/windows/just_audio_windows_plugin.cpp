@@ -13,6 +13,7 @@
 #include <memory>
 #include <sstream>
 
+#include "platform_thread.hpp"
 #include "player.hpp"
 
 using flutter::EncodableMap;
@@ -74,9 +75,8 @@ JustAudioWindowsPlugin::JustAudioWindowsPlugin() {}
 
 JustAudioWindowsPlugin::~JustAudioWindowsPlugin() {
   // players_ has static storage, so without this the players are destroyed at
-  // process exit — after the plugin, after the dispatcher, and after the
-  // registrar that owns the window-proc delegate. Tear them down here instead,
-  // while all of that is still alive, then release the dispatcher.
+  // process exit — after the plugin and after the dispatcher they post to. Tear
+  // them down here instead, while the dispatcher is still alive, then release it.
   players_.clear();
   dispatcher_.reset();
 }
