@@ -1,6 +1,7 @@
 #pragma comment(lib, "windowsapp")
 
 #include <chrono>
+#include <stdexcept>
 
 // This must be included before many other Windows headers.
 #include <windows.h>
@@ -18,6 +19,16 @@
 #include <winrt/Windows.Media.Core.h>
 #include <winrt/Windows.Media.Playback.h>
 #include <winrt/Windows.System.h>
+// One line per method call is useful when working on the plugin and pure noise
+// in a shipped app — every setVolume, setSpeed, setPitch, setSkipSilence,
+// setLoopMode and setShuffleMode shows up in the user's log. Keep it for debug
+// builds, where NDEBUG is not defined. Real errors are logged either way.
+#ifndef NDEBUG
+#define JAW_TRACE(expr) do { std::cerr << expr << std::endl; } while (0)
+#else
+#define JAW_TRACE(expr) do { } while (0)
+#endif
+
 #define TO_MILLISECONDS(timespan) timespan.count() / 10000
 #define TO_MICROSECONDS(timespan) TO_MILLISECONDS(timespan) * 1000
 
@@ -142,6 +153,8 @@ public:
   std::unique_ptr<JustAudioEventSink> event_sink_ = nullptr;
   std::unique_ptr<JustAudioEventSink> data_sink_ = nullptr;
 
+  bool buffering_progress_warned_ = false;
+
   // Tokens for event unsubscription
   winrt::event_token playback_state_token_{};
   winrt::event_token media_failed_token_{};
@@ -151,6 +164,22 @@ public:
 public:
   AudioPlayer::AudioPlayer(std::string idx, flutter::BinaryMessenger* messenger) {
     id = idx;
+
+    // Opt out of the System Media Transport Controls.
+    //
+    // MediaPlayer.CommandManager.IsEnabled defaults to true, so Windows
+    // auto-integrates every player with the SMTC: the OS shows a media flyout
+    // and routes hardware media keys straight to mediaPlayer. That is wrong for
+    // a platform implementation on two counts. The flyout is blank, because
+    // nothing here ever publishes a title, artist or artwork. And a media key
+    // moves the native player without telling the Dart side, so just_audio's
+    // `playing` — which it updates from our data events — flips underneath the
+    // app while the app's own transport state does not, leaving position math
+    // and any UI built on it out of sync.
+    //
+    // Callers that want OS controls should publish them deliberately, which on
+    // Flutter means audio_service. Leaving this on takes that choice away.
+    mediaPlayer.CommandManager().IsEnabled(false);
 
     // Set up channels
     player_channel_ =
@@ -254,25 +283,37 @@ public:
   ) {
     const auto* args = std::get_if<flutter::EncodableMap>(method_call.arguments());
 
-    std::cerr << "[just_audio_windows] Called " << method_call.method_name() << std::endl;
+    JAW_TRACE("[just_audio_windows] Called " << method_call.method_name());
 
     if (method_call.method_name().compare("load") == 0) {
       const auto* audioSourceData = std::get_if<flutter::EncodableMap>(ValueOrNull(*args, "audioSource"));
       const auto* initialPosition = std::get_if<int>(ValueOrNull(*args, "initialPosition"));
       const auto* initialIndex = std::get_if<int>(ValueOrNull(*args, "initialIndex"));
 
+      // `catch (char* error)` caught nothing: no code here throws a raw string,
+      // while createMediaSource throws std::invalid_argument for a source type
+      // it does not support, and every WinRT call in this path can throw
+      // winrt::hresult_error. An uncaught C++ exception escaping a method-call
+      // handler calls std::terminate, so what should have been a catchable Dart
+      // error killed the process instead. The seeks moved inside the try for the
+      // same reason: they sat outside it, so a WinRT throw from either one had
+      // nothing to catch it either.
       try {
         loadSource(*audioSourceData);
-      } catch (char* error) {
-        return result->Error("load_error", error);
-      }
 
-      if (initialIndex != nullptr) {
-        seekToItem((uint32_t)*initialIndex);
-      }
+        if (initialIndex != nullptr) {
+          seekToItem((uint32_t)*initialIndex);
+        }
 
-      if (initialPosition != nullptr) {
-        seekToPosition(*initialPosition);
+        if (initialPosition != nullptr) {
+          seekToPosition(*initialPosition);
+        }
+      } catch (const winrt::hresult_error& error) {
+        return result->Error("load_error", winrt::to_string(error.message()));
+      } catch (const std::exception& error) {
+        return result->Error("load_error", error.what());
+      } catch (...) {
+        return result->Error("load_error", "Unknown error loading the audio source");
       }
 
       result->Success(flutter::EncodableMap());
@@ -563,8 +604,13 @@ public:
     }
     catch (...)
     {
-      // If an error occurs, log it and use 1 as the buffering progress
-      std::cerr << "[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1." << std::endl;
+      // If an error occurs, log it and use 1 as the buffering progress. Once
+      // per player: a source that does not support the property does not start
+      // supporting it, so this otherwise repeated on every playback event.
+      if (!buffering_progress_warned_) {
+        buffering_progress_warned_ = true;
+        std::cerr << "[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1." << std::endl;
+      }
       bufferingProgress = 1;
     }
 
