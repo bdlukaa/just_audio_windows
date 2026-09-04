@@ -1,6 +1,7 @@
 #pragma comment(lib, "windowsapp")
 
 #include <chrono>
+#include <stdexcept>
 
 // This must be included before many other Windows headers.
 #include <windows.h>
@@ -164,6 +165,22 @@ public:
   AudioPlayer::AudioPlayer(std::string idx, flutter::BinaryMessenger* messenger) {
     id = idx;
 
+    // Opt out of the System Media Transport Controls.
+    //
+    // MediaPlayer.CommandManager.IsEnabled defaults to true, so Windows
+    // auto-integrates every player with the SMTC: the OS shows a media flyout
+    // and routes hardware media keys straight to mediaPlayer. That is wrong for
+    // a platform implementation on two counts. The flyout is blank, because
+    // nothing here ever publishes a title, artist or artwork. And a media key
+    // moves the native player without telling the Dart side, so just_audio's
+    // `playing` — which it updates from our data events — flips underneath the
+    // app while the app's own transport state does not, leaving position math
+    // and any UI built on it out of sync.
+    //
+    // Callers that want OS controls should publish them deliberately, which on
+    // Flutter means audio_service. Leaving this on takes that choice away.
+    mediaPlayer.CommandManager().IsEnabled(false);
+
     // Set up channels
     player_channel_ =
       std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
@@ -273,18 +290,30 @@ public:
       const auto* initialPosition = std::get_if<int>(ValueOrNull(*args, "initialPosition"));
       const auto* initialIndex = std::get_if<int>(ValueOrNull(*args, "initialIndex"));
 
+      // `catch (char* error)` caught nothing: no code here throws a raw string,
+      // while createMediaSource throws std::invalid_argument for a source type
+      // it does not support, and every WinRT call in this path can throw
+      // winrt::hresult_error. An uncaught C++ exception escaping a method-call
+      // handler calls std::terminate, so what should have been a catchable Dart
+      // error killed the process instead. The seeks moved inside the try for the
+      // same reason: they sat outside it, so a WinRT throw from either one had
+      // nothing to catch it either.
       try {
         loadSource(*audioSourceData);
-      } catch (char* error) {
-        return result->Error("load_error", error);
-      }
 
-      if (initialIndex != nullptr) {
-        seekToItem((uint32_t)*initialIndex);
-      }
+        if (initialIndex != nullptr) {
+          seekToItem((uint32_t)*initialIndex);
+        }
 
-      if (initialPosition != nullptr) {
-        seekToPosition(*initialPosition);
+        if (initialPosition != nullptr) {
+          seekToPosition(*initialPosition);
+        }
+      } catch (const winrt::hresult_error& error) {
+        return result->Error("load_error", winrt::to_string(error.message()));
+      } catch (const std::exception& error) {
+        return result->Error("load_error", error.what());
+      } catch (...) {
+        return result->Error("load_error", "Unknown error loading the audio source");
       }
 
       result->Success(flutter::EncodableMap());
