@@ -135,6 +135,7 @@ class AudioPlayer {
 private:
   // Read from WinRT callback threads, written from the platform thread.
   std::atomic<bool> disposed_{false};
+  bool engine_shutting_down_ = false;
 
   // Whether `load` has ever been handled for this player.
   //
@@ -156,7 +157,11 @@ private:
     mediaPlayer.MediaFailed(media_failed_token_);
     mediaPlaybackList.CurrentItemChanged(item_changed_token_);
     mediaPlaybackList.ItemFailed(item_failed_token_);
-    player_channel_->SetMethodCallHandler(nullptr);
+    // Not at engine shutdown: the messenger's engine is already gone, and
+    // unregistering dereferences it. The engine drops its handlers with it.
+    if (!engine_shutting_down_) {
+      player_channel_->SetMethodCallHandler(nullptr);
+    }
     event_sink_.reset();
     data_sink_.reset();
     mediaPlayer.Close();
@@ -322,6 +327,15 @@ public:
   }
 
   AudioPlayer::~AudioPlayer() {
+    Dispose();
+  }
+
+  // Disposes the player during engine shutdown, without touching the
+  // messenger. Only the plugin's destructor may call this: anywhere else the
+  // engine is alive, and the method channel would keep a handler pointing at a
+  // destroyed player.
+  void DisposeForEngineShutdown() {
+    engine_shutting_down_ = true;
     Dispose();
   }
 
