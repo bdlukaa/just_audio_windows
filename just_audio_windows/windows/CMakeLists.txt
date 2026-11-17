@@ -2,7 +2,18 @@ cmake_minimum_required(VERSION 3.14)
 set(PROJECT_NAME "just_audio_windows")
 project(${PROJECT_NAME} LANGUAGES CXX)
 set(CPPWINRT_VERSION 2.0.210806.1)
-set(CMAKE_CXX_STANDARD 17)
+# C++20, not 17, because of a header C++/WinRT chooses on our behalf. Built as
+# C++17 it includes <experimental/coroutine>; built as C++20 it includes the
+# standard <coroutine>. MSVC 14.51, which ships with Visual Studio 2026, turned
+# the deprecation of the experimental header into a hard error:
+#
+#   error C2338: static assertion failed: 'error STL1011: The /await compiler
+#   option, <experimental/coroutine> ... are deprecated by Microsoft and will be
+#   REMOVED SOON.'
+#
+# So this plugin does not build under VS 2026 at C++17, whether or not it uses
+# coroutines itself - including <winrt/Windows.Media.Playback.h> is enough.
+set(CMAKE_CXX_STANDARD 20)
 
 # This value is used when generating builds using this plugin, so it must
 # not be changed
