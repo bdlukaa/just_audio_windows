@@ -1,5 +1,6 @@
 ## Unreleased
 
+* [fix]: Closing the app after playing audio no longer crashes in `FlutterDesktopMessengerSetCallback` ([#70](https://github.com/bdlukaa/just_audio_windows/pull/70))
 * [fix]: Build as C++20, so the plugin compiles under Visual Studio 2026 ([#67](https://github.com/bdlukaa/just_audio_windows/pull/67))
 * [fix]: Do not report `completed` before the duration is known ([#66](https://github.com/bdlukaa/just_audio_windows/pull/66))
 * [fix]: Do not report a source swap as `idle`, which aborted the load in progress ([#65](https://github.com/bdlukaa/just_audio_windows/pull/65))
